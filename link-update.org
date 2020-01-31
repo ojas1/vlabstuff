@@ -1,0 +1,408 @@
+#+title: Reordering experiment sidebar links
+
+* Problem
+
+  The sidebar links need to be reordered in all html pages.
+
+
+* Solution
+
+** Assumptions
+
+   1. Links are in a =div= with classname =.sidebar-col-2=.
+   2. This div does not contain anything other than links.
+   3. Link Names are unique.
+
+
+** Main Idea
+   
+   The sidebar contains several links, each one has a unique name.
+   The re-ordering is performed by as follows:
+   1. extract the section link =node= corresponding to each section and
+      create a map (name -> link node).
+   2. clear the contents of the section links holder.
+   3. given a list of names, which contains section names in the
+      expected order, iterate through the list and append the
+      corresponding link from the name-link map, to the parent.
+      
+
+** NOTE
+
+   This will not work if there is a new name in the expected order
+   list.  Each name in the list has to eactly match the name in the
+   sidebar.
+
+
+* Implementation
+
+** Reorder SectionLinks
+
+   Takes a list of nodes and returns reordered list of link nodes.
+
+   This function creates a name-node map internally.
+
+   #+name: reorder-section-links
+   #+BEGIN_SRC js
+
+   function reorderSectionLinks(sidebar, expected_ordering){
+       const sections = Array.from(sidebar.children);
+       smap = {};
+       sections.forEach((e, i) => {
+          let sname = e.textContent.trim();
+          smap[sname] = e;
+       });
+       const ordered_sections = expected_ordering.map(sn => smap[sn]);
+       return ordered_sections;      
+   }
+
+   #+END_SRC
+
+
+** Validate Names
+
+   Check if a linknode is present for each name in the given ordered
+   list of link names.
+
+   #+name: all-sections-present
+   #+BEGIN_SRC js
+
+     function allSectionsArePresent(sidebar, section_names) {
+	 if(sidebar === null) return false;
+	 const sections = Array.from(sidebar.children);
+	 res = sections.every((e) => {
+	     let sname = e.textContent.trim();
+	     return section_names.includes(sname);
+	 });
+	 return res;
+     }
+
+   #+END_SRC
+
+
+** Validate Sidebar
+
+   Sidebar is the parent of all the linknodes.  Check if the reference
+   to sidebar is valid and contains all the links we need.
+
+   #+name: validate-sidebar
+   #+BEGIN_SRC js
+        
+     function validateSidebar(dom, expected_ordering) {
+	 sb = dom.window.document.querySelector(".sidebar-col-2");
+	 const sidebarIsInvalid = ((sb === null) || (sb.children.length === 0));
+	 const sectionsDontMatch = !allSectionsArePresent(sb, expected_ordering);
+	 if (sidebarIsInvalid || sectionsDontMatch){
+	     return null;
+	 }
+	 else {
+	     return sb;
+	 }
+     }
+
+   #+END_SRC
+
+
+** Update Sidebar
+
+   Given an expected ordering of names, reorder the links in the
+   sidebar.
+
+   #+name: update-sidebar
+   #+BEGIN_SRC js
+
+     function updateSidebar(dom, expected_ordering) {
+	 const sidebar = validateSidebar(dom, expected_ordering);
+	 if (sidebar === null) return null;
+	 const ordered_sections = reorderSectionLinks(sidebar, expected_ordering);
+	 sidebar.innerHTML = "";
+	 ordered_sections.forEach(s => sidebar.appendChild(s));
+	 return dom.serialize();
+     }
+
+   #+END_SRC
+
+
+** Libraries
+
+#+name: deps
+#+BEGIN_SRC js
+
+  const glob = require('glob');
+  const path = require('path');
+  const fs = require('fs');
+  const jsdom = require("jsdom");
+  const {JSDOM} = jsdom;
+
+#+END_SRC
+
+
+** Write the modified HTML to file
+
+   #+name: updatehtml-and-log
+   #+BEGIN_SRC js
+
+  function updateHtmlandLog(path, content, log) {      
+      if (content){
+          fs.writeFileSync(path, content);
+          log.success.push(path);
+      }
+      else{
+          log.fail.push(path);
+      }
+      console.log("Success: ", log.success.length, "Fail: ", log.fail.length);
+  }
+
+   #+END_SRC
+
+#+name: apply-patch
+#+BEGIN_SRC js
+    function applyPatch(html_path, expected_ordering){
+      
+        const htmlsrc = fs.readFileSync(html_path, encoding="utf-8");
+        const dom = new JSDOM(htmlsrc);
+      
+        const newhtml = updateSidebar(dom, expected_ordering);
+        updateHtmlandLog(html_path, newhtml, log);
+      
+        fs.writeFileSync("report.json", JSON.stringify(log));
+    }
+#+END_SRC
+
+
+** Main solution
+
+   Apply the patch to each html file in the lab source code with
+   =<labroot>/src/lab/exp<something>.html= pattern.
+
+   #+name: batch-apply
+   #+BEGIN_SRC js :eval no :noweb yes :tangle no
+
+  <<deps>>
+  <<update-sidebar>>
+  <<all-sections-present>>
+  <<validate-sidebar>>
+  <<reorder-section-links>>
+  <<updatehtml-and-log>>
+  <<apply-patch>>
+
+  let log = 
+      { success : []
+      , fail : []
+      };
+
+  const config_file = "config.json";
+  const config = JSON.parse(fs.readFileSync(config_file, encoding="utf-8"));
+  
+  let pat = path.join(config.lab_root, 'src/lab/exp*/*.html');
+  glob(pat, (err, html_paths) => html_paths.forEach(p => applyPatch(p, config.expected_ordering)));
+     
+   #+END_SRC
+
+   END.
+
+
+* Config
+
+  #+BEGIN_SRC json :tangle no
+  
+  { "lab_root" : "molecular-interactions-iiith"
+  , "expected_ordering" : [ "Introduction"
+                          , "Theory"
+                          , "Experiment"
+                          , "Objective"
+                          , "Manual"
+                          , "Quizzes"
+                          , "Feedback"
+                          ]
+  }
+  
+  #+END_SRC
+
+
+* Instructions
+  
+** Install dependencies
+
+#+BEGIN_SRC bash
+
+npm install jsdom@15.2.0
+npm install glob@7.1.5
+
+#+END_SRC
+
+  Change =config.json= and run the following.
+  
+  #+BEGIN_SRC 
+  
+  node link-reorder-patch.js
+    
+  #+END_SRC
+  
+  
+
+* Problem No. 2
+
+  There may be additional links.
+
+** libraries
+
+#+name: deps2
+#+BEGIN_SRC js
+
+  const glob = require('glob');
+  const path = require('path');
+  const fs = require('fs');
+  const jsdom = require("jsdom");
+  const util = require("util");
+  const {JSDOM} = jsdom;
+
+#+END_SRC
+
+
+** Solution
+   
+   Instead of looking for existing links, we remove the contents
+   completely and replace it with a new list.
+
+   We need two new fields.
+
+   A link looks like this:
+
+   #+BEGIN_SRC html
+
+     <a href="Introduction.html?domain=Chemical Sciences&lab=Molecular
+	      Interaction" class="sidebar-a"> 
+       <h3 class="text-h3-darkblue"
+	     style="margin-top: 2px;">
+	   Introduction
+       </h3>
+     </a>
+
+   #+END_SRC
+
+   
+   So we can map a name to a link as follows:
+
+   (name, domain, lab) ----link----> name_link
+
+   #+name: create-link
+   #+BEGIN_SRC js
+     const create_link = (name, domain, lab) => {
+	 const visible_text = '<h3 class="text-h3-darkblue" style="margin-top: 2px;"> %s </h3>';
+	 const a = '<a href="%s.html?domain=%s&lab=%s" class="sidebar-a"> %s </a>';
+	 return util.format(a, name, domain, lab, util.format(visible_text, name));
+     }
+   #+END_SRC
+
+   #+name: test-create-link
+   #+BEGIN_SRC js :eval yes :noweb yes
+
+     util = require('util');
+
+     <<create-link>>
+
+     link = create_link('Introduction', 'VLAB', 'CS');
+     console.log(link);
+
+   #+END_SRC
+
+   #+RESULTS: test-create-link
+   : <a href="Introduction.html?domain=VLAB&lab=CS" class="sidebar-a"> <h3 class="text-h3-darkblue" style="margin-top: 2px;"> Introduction </h3> </a>
+   : undefined
+
+
+** Update Sidebar
+
+*** New Sidebar
+
+       #+name: new-sidebar
+       #+BEGIN_SRC js
+
+	 const Sidebar = (dom) => dom.window.document.querySelector(".sidebar-col-2");
+
+       #+END_SRC
+   
+   
+   #+name: replace-sidebar
+   #+BEGIN_SRC js
+
+     function replaceSidebarContents(dom, linknames, domain, lab) {
+	 const sidebar = Sidebar(dom);
+	 if (sidebar === null) return null;
+	 sidebar.innerHTML = "";
+	 linknames
+	       .map(n => create_link(n, domain, lab))
+	       .map(JSDOM.fragment)
+	       .forEach(f => sidebar.appendChild(f));
+	 return dom.serialize();
+     }
+
+   #+END_SRC
+   
+
+** Apply solution
+
+#+name: apply-new-solution
+#+BEGIN_SRC js
+    function applyPatch(html_path, linknames, domain, lab){
+        console.log(html_path);
+        const htmlsrc = fs.readFileSync(html_path, encoding="utf-8");	
+        const dom = new JSDOM(htmlsrc);
+        const newhtml = replaceSidebarContents(dom, linknames, domain, lab);
+        updateHtmlandLog(html_path, newhtml, log);
+        fs.writeFileSync("report.json", JSON.stringify(log));
+    }
+#+END_SRC
+
+
+** Driver
+   
+   Apply the patch to each html file in the lab source code with
+   =<labroot>/src/lab/exp<something>.html= pattern.
+   
+   #+name: batch-apply
+   #+BEGIN_SRC js :eval no :noweb yes :tangle linkupdate.js
+
+     <<deps2>>
+     <<create-link>>
+     <<updatehtml-and-log>>
+     <<new-sidebar>>
+     <<replace-sidebar>>
+     <<apply-new-solution>>
+     
+     let log = 
+	 { success : []
+	 , fail : []
+	 };
+
+     const config_file = "config.json";
+     const config = JSON.parse(fs.readFileSync(config_file, encoding="utf-8"));
+
+     let pat = path.join(config.lab_root, 'src/lab/exp*/*.html');
+     glob(pat, (err, html_paths) => html_paths.forEach(p => applyPatch(p, config.linknames
+								       , config.domain, config.lab)));
+
+   #+END_SRC
+
+   END.
+
+
+
+** Config
+
+  #+BEGIN_SRC json :tangle config.json
+  
+{ "lab_root" : "molecular-interactions-iiith"
+  , "lab" : "Molecular Interaction"
+  , "domain" : "Chemical Sciences"
+  , "linknames" : [ "Theory"
+                    , "Experiment"
+                    , "Objective"
+                    , "Manual"
+                    , "Quizzes"
+                    , "Feedback"
+		    , "Surprise"
+                  ]
+}
+  
+  #+END_SRC

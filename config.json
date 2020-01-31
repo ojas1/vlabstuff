@@ -1,0 +1,12 @@
+{ "lab_root" : "/home/ojas/iiith/vlabs/virtul-labs/molecular-interactions-iiith"
+  , "lab" : "Molecular Interaction"
+  , "domain" : "Chemical Sciences"
+  , "linknames" : [ "Theory"
+                    , "Experiment"
+                    , "Objective"
+                    , "Manual"
+                    , "Quizzes"
+                    , "Feedback"
+		    , "Surprise Ho Ho"
+                  ]
+}
